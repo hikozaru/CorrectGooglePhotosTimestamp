@@ -1,0 +1,13 @@
+﻿<Window x:Class="PhotosTimestamp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PhotosTimestamp"
+        mc:Ignorable="d"
+        Title="Google Takeoutでダウンロードした画像のタイムスタンプをJSONファイルを参考に修正します。" Height="450" Width="1200" ContentRendered="Window_ContentRendered">
+    <DockPanel Name="ddPanel" Drop="ddPanel_Drop" AllowDrop="false" PreviewDragOver="ddPanel_PreviewDragOver">
+        <Label Name="status" DockPanel.Dock="Bottom"/>
+        <DataGrid Name="resultDataGrid" DockPanel.Dock="Top" IsReadOnly="True"/>
+    </DockPanel>
+</Window>
