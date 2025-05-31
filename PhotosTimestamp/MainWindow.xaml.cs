@@ -42,7 +42,7 @@ namespace PhotosTimestamp
         const string HowToUse
             = "Google TakeoutでダウンロードしたZIPファイルを展開し、展開されたファイル／フォルダをドラッグ＆ドロップして下さい。\n"
             + "コマンドライン引数やプログラムアイコンへのドラッグ＆ドロップでもファイル／フォルダ指定可能です。\n"
-            + "画像ファイルにJSONファイル（例：IMG_1234.PNGに対しIMG_1234.PNG.json）がある場合に処理を行います。\n"
+            + "画像ファイルにJSONファイル（例：IMG_1234.PNGに対しIMG_1234.PNG.jsonやIMG_1234.PNG.supp*.json）がある場合に処理を行います。\n"
             + "TakeoutでZIPファイルが分割された場合には一つのフォルダに統合してください、画像ファイルとJSONファイルが同一のZIPに格納されるとは限りません。\n"
             + "JSONファイルに記録されているphotoTakenTime.timestampをLocal時間に変換し、画像ファイルとJSONファイルの作成日時と更新日時に設定します。";
 
@@ -128,7 +128,7 @@ namespace PhotosTimestamp
                         Dispatcher.Invoke((Action)(() =>
                         {
                             var dataList = resultDataGrid.ItemsSource as ObservableCollection<Result>;
-                            dataList.Add(new Result() { 番号=dataList.Count+1, 結果=E_RESULT.失敗, ファイル名 = arg, エラーメッセージ="ファイルまたはフォルダが見つかりませんでした。",例外メッセージ = e.ToString() });
+                            dataList.Add(new Result() { 番号 = dataList.Count + 1, 結果 = E_RESULT.失敗, ファイル名 = arg, エラーメッセージ = "ファイルまたはフォルダが見つかりませんでした。", 例外メッセージ = e.ToString() });
                         }));
                     }
                 }
@@ -137,7 +137,9 @@ namespace PhotosTimestamp
 
         void DoFile(string targetFilename)
         {
-            var jsonFilename = targetFilename + ".json";
+
+
+
             if (string.Compare(".json", System.IO.Path.GetExtension(targetFilename), true) == 0)
             {
                 Dispatcher.Invoke((Action)(() =>
@@ -145,74 +147,118 @@ namespace PhotosTimestamp
                     status.Content = targetFilename;
                 }));
             }
-            else if (System.IO.File.Exists(jsonFilename))
-            {
-                DateTime photoTakenTime;
-                try
+            else{
+                var jsonFilename = targetFilename + ".json";
+                // まず通常の .json を探す
+                if (!System.IO.File.Exists(jsonFilename))
                 {
-                    using (var stream = new FileStream(jsonFilename, FileMode.Open, FileAccess.Read))
-                    {
-                        var serializer = new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(ImageInfo));
-                        var imageInfo = (ImageInfo)serializer.ReadObject(stream);
-                        var unixtime = imageInfo.PhotoTakenTime.timstamp;
-                        photoTakenTime = DateTimeOffset.FromUnixTimeSeconds(long.Parse(unixtime)).LocalDateTime;
-                    }
-                    var imageFile = new System.IO.FileInfo(targetFilename);
-                    var jsonFile = new System.IO.FileInfo(jsonFilename);
+                    // supplemental-metadata.jsonを探す。
+                    // ファイル名が長いとsupplemental-meta.jsonなどと省略されることもあるので.supp*.jsonで探す。
+                    string directory = Path.GetDirectoryName(targetFilename);
+                    string searchPattern = Path.GetFileName(targetFilename) + ".supp*.json";
+                    string[] matchingFiles = Directory.GetFiles(directory, searchPattern);
 
-                    var results = new Result[] {
+                    // ワイルドカード検索で見つかった場合は最初のファイルを使用
+                    if (matchingFiles.Length > 0)
+                    {
+                        jsonFilename = matchingFiles[0];
+                    }
+                    else
+                    {
+                        jsonFilename = targetFilename + ".supplemental-metadata.json";
+                    }
+                }
+                if (!System.IO.File.Exists(jsonFilename))
+                {
+                    // Live Photoなどは静止画と動画がペアが出力されるが、JSONファイルが一つしかないことがある。
+                    // 以下のようなケースではIMG_7797.MP4が処理されないため IMG_7797.*.supp*.json でJSONファイルを探す。
+                    //  IMG_7797.HEIC
+                    //  IMG_7797.HEIC.supplemental-metadata.json
+                    //  IMG_7797.MP4
+                    string directory = Path.GetDirectoryName(targetFilename);
+                    string searchPattern = Path.GetFileNameWithoutExtension(targetFilename) + ".*.supp*.json";
+                    string[] matchingFiles = Directory.GetFiles(directory, searchPattern);
+
+                    // ワイルドカード検索で見つかった場合は最初のファイルを使用
+                    if (matchingFiles.Length > 0)
+                    {
+                        jsonFilename = matchingFiles[0];
+                    }
+                    else
+                    {
+                        jsonFilename = targetFilename + ".supplemental-metadata.json";
+                    }
+                }
+
+                if (System.IO.File.Exists(jsonFilename))
+                {
+                    DateTime photoTakenTime;
+                    try
+                    {
+                        using (var stream = new FileStream(jsonFilename, FileMode.Open, FileAccess.Read))
+                        {
+                            var serializer = new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(ImageInfo));
+                            var imageInfo = (ImageInfo)serializer.ReadObject(stream);
+                            var unixtime = imageInfo.PhotoTakenTime.timstamp;
+                            photoTakenTime = DateTimeOffset.FromUnixTimeSeconds(long.Parse(unixtime)).LocalDateTime;
+                        }
+                        var imageFile = new System.IO.FileInfo(targetFilename);
+                        var jsonFile = new System.IO.FileInfo(jsonFilename);
+
+                        var results = new Result[] {
                         new Result(){ 結果=E_RESULT.SKIP,ファイル名=targetFilename,エラーメッセージ="",例外メッセージ="" },
                         new Result(){ 結果=E_RESULT.SKIP,ファイル名=jsonFilename,エラーメッセージ="画像ファイルの更新に失敗したときはJSONファイルも更新しません。",例外メッセージ="" }
                     };
 
-                    foreach (var result in results)
-                    {
-                        try
-                        {
-                            var file = new System.IO.FileInfo(result.ファイル名);
-                            file.CreationTime = photoTakenTime;
-                            file.LastWriteTime = photoTakenTime;
-                            result.結果 = E_RESULT.更新;
-                            result.エラーメッセージ = "";
-                            result.例外メッセージ = "";
-                        }
-                        catch (Exception e)
-                        {
-                            result.結果 = E_RESULT.失敗;
-                            result.エラーメッセージ = "タイムスタンプの更新に失敗しました。";
-                            result.例外メッセージ = e.ToString();
-                            break;
-                        }
-                    }
-                    Dispatcher.Invoke((Action)(() =>
-                    {
-                        status.Content = targetFilename;
-                        var dataList = resultDataGrid.ItemsSource as ObservableCollection<Result>;
                         foreach (var result in results)
                         {
-                            result.番号 = dataList.Count + 1;
-                            dataList.Add(result);
+                            try
+                            {
+                                var file = new System.IO.FileInfo(result.ファイル名);
+                                file.CreationTime = photoTakenTime;
+                                file.LastWriteTime = photoTakenTime;
+                                result.結果 = E_RESULT.更新;
+                                result.エラーメッセージ = "";
+                                result.例外メッセージ = "";
+                            }
+                            catch (Exception e)
+                            {
+                                result.結果 = E_RESULT.失敗;
+                                result.エラーメッセージ = "タイムスタンプの更新に失敗しました。";
+                                result.例外メッセージ = e.ToString();
+                                break;
+                            }
                         }
-                    }));
+                        Dispatcher.Invoke((Action)(() =>
+                        {
+                            status.Content = targetFilename;
+                            var dataList = resultDataGrid.ItemsSource as ObservableCollection<Result>;
+                            foreach (var result in results)
+                            {
+                                result.番号 = dataList.Count + 1;
+                                dataList.Add(result);
+                            }
+                        }));
+                    }
+                    catch (Exception e)
+                    {
+                        Dispatcher.Invoke((Action)(() =>
+                        {
+                            status.Content = targetFilename;
+                            var dataList = resultDataGrid.ItemsSource as ObservableCollection<Result>;
+                            dataList.Add(new Result() { 番号 = dataList.Count + 1, 結果 = E_RESULT.失敗, ファイル名 = jsonFilename, エラーメッセージ = "タイムスタンプの取得に失敗しました。", 例外メッセージ = e.ToString() });
+                        }));
+                    }
                 }
-                catch(Exception e)
+                else
                 {
                     Dispatcher.Invoke((Action)(() =>
                     {
                         status.Content = targetFilename;
                         var dataList = resultDataGrid.ItemsSource as ObservableCollection<Result>;
-                        dataList.Add(new Result() { 番号 = dataList.Count + 1, 結果 = E_RESULT.失敗, ファイル名 = jsonFilename, エラーメッセージ = "タイムスタンプの取得に失敗しました。", 例外メッセージ = e.ToString() });
+                        dataList.Add(new Result() { 番号 = dataList.Count + 1, 結果 = E_RESULT.SKIP, ファイル名 = targetFilename, エラーメッセージ = "*.JSONファイルがありません。", 例外メッセージ = "" });
                     }));
                 }
-            }
-            else
-            {
-                Dispatcher.Invoke((Action)(() =>
-                {
-                    status.Content = targetFilename;
-                    var dataList = resultDataGrid.ItemsSource as ObservableCollection<Result>;
-                    dataList.Add(new Result() { 番号 = dataList.Count + 1, 結果 = E_RESULT.SKIP, ファイル名 = targetFilename, エラーメッセージ = "*.JSONファイルがありません。", 例外メッセージ = "" });
-                }));
             }
         }
     }
