@@ -42,7 +42,7 @@ namespace PhotosTimestamp
         const string HowToUse
             = "Google TakeoutでダウンロードしたZIPファイルを展開し、展開されたファイル／フォルダをドラッグ＆ドロップして下さい。\n"
             + "コマンドライン引数やプログラムアイコンへのドラッグ＆ドロップでもファイル／フォルダ指定可能です。\n"
-            + "画像ファイルにJSONファイル（例：IMG_1234.PNGに対しIMG_1234.PNG.jsonやIMG_1234.PNG.supp*.json）がある場合に処理を行います。\n"
+            + "画像ファイルにJSONファイル（例：IMG_1234.PNGに対しIMG_1234.PNG.jsonやIMG_1234.PNG.supp*.jsonやIMG_1234.supp*.json）がある場合に処理を行います。\n"
             + "TakeoutでZIPファイルが分割された場合には一つのフォルダに統合してください、画像ファイルとJSONファイルが同一のZIPに格納されるとは限りません。\n"
             + "JSONファイルに記録されているphotoTakenTime.timestampをLocal時間に変換し、画像ファイルとJSONファイルの作成日時と更新日時に設定します。";
 
@@ -184,9 +184,21 @@ namespace PhotosTimestamp
                     {
                         jsonFilename = matchingFiles[0];
                     }
-                    else
+                }
+                if (!System.IO.File.Exists(jsonFilename))
+                {
+                    // 画像ファイルの拡張子が取り除かれたJSONファイル名が生成されるケースがある模様
+                    // 以下のようなケースではIMG_7797.HEICが処理されないため IMG_7797.supp*.json でJSONファイルを探す。
+                    //  IMG_7797.HEIC
+                    //  IMG_7797.supplemental-metadata.json
+                    string directory = Path.GetDirectoryName(targetFilename);
+                    string searchPattern = Path.GetFileNameWithoutExtension(targetFilename) + ".supp*.json";
+                    string[] matchingFiles = Directory.GetFiles(directory, searchPattern);
+
+                    // ワイルドカード検索で見つかった場合は最初のファイルを使用
+                    if (matchingFiles.Length > 0)
                     {
-                        jsonFilename = targetFilename + ".supplemental-metadata.json";
+                        jsonFilename = matchingFiles[0];
                     }
                 }
 
@@ -206,10 +218,9 @@ namespace PhotosTimestamp
                         var jsonFile = new System.IO.FileInfo(jsonFilename);
 
                         var results = new Result[] {
-                        new Result(){ 結果=E_RESULT.SKIP,ファイル名=targetFilename,エラーメッセージ="",例外メッセージ="" },
-                        new Result(){ 結果=E_RESULT.SKIP,ファイル名=jsonFilename,エラーメッセージ="画像ファイルの更新に失敗したときはJSONファイルも更新しません。",例外メッセージ="" }
-                    };
-
+                            new Result(){ 結果=E_RESULT.SKIP,ファイル名=targetFilename,エラーメッセージ="",例外メッセージ="" },
+                            new Result(){ 結果=E_RESULT.SKIP,ファイル名=jsonFilename,エラーメッセージ="画像ファイルの更新に失敗したときはJSONファイルも更新しません。",例外メッセージ="" }
+                        };
                         foreach (var result in results)
                         {
                             try
